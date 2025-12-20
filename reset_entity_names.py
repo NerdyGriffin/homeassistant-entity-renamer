@@ -268,10 +268,15 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             if user_device_name and original_name:
                 # Check if the original name starts with the device's *default* name
                 default_device_name = device.get("name")
+                device_model = device.get("model")
+
                 if default_device_name and original_name.startswith(
                     default_device_name
                 ):
                     suffix = original_name[len(default_device_name) :].strip()
+                    target_name = f"{user_device_name} {suffix}".strip()
+                elif device_model and original_name.startswith(device_model):
+                    suffix = original_name[len(device_model) :].strip()
                     target_name = f"{user_device_name} {suffix}".strip()
 
         # Compare target_name with current_name
