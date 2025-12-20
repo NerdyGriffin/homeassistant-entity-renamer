@@ -10,6 +10,7 @@ import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
+
 def find_entity_references(data, valid_entities):
     """Recursively find all strings that look like entity IDs."""
     refs = []

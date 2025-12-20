@@ -10,6 +10,7 @@ import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
+
 def list_entities(ws, search_regex=None):
     msg_id = 1
     ws.send(json.dumps({"id": msg_id, "type": "config/entity_registry/list"}))
@@ -37,6 +38,7 @@ def list_entities(ws, search_regex=None):
         return []
 
     return entities
+
 
 def update_automation_references(ws, updates, msg_id, execute=False, verbose=False):
     print("\nChecking for automation references to update...")
@@ -90,6 +92,7 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
 
     return msg_id
 
+
 def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=False):
     if not entities:
         return
@@ -113,7 +116,9 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             update_local_entity_ids(entities, updates)
 
         # Update automation references (First Pass)
-        msg_id = update_automation_references(ws, updates, msg_id, execute=execute, verbose=verbose)
+        msg_id = update_automation_references(
+            ws, updates, msg_id, execute=execute, verbose=verbose
+        )
 
     # Prepare data for table
     # Columns: Entity ID, Current Name, Proposed Name
@@ -188,7 +193,9 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             update_local_entity_ids(entities, updates)
 
             # Update automation references (Second Pass)
-            msg_id = update_automation_references(ws, updates, msg_id, execute=True, verbose=verbose)
+            msg_id = update_automation_references(
+                ws, updates, msg_id, execute=True, verbose=verbose
+            )
 
 
 def apply_name_changes(ws, table_data, verbose, msg_id):

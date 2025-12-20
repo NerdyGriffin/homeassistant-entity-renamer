@@ -22,6 +22,7 @@ headers = {
     "Content-Type": "application/json",
 }
 
+
 def list_entities(regex=None):
     # API endpoint for retrieving all entities
     api_endpoint = f"http{TLS_S}://{config.HOST}/api/states"
@@ -72,9 +73,9 @@ def process_entities(entity_data, search_regex, replace_regex=None, output_csv=N
         ]
 
     # Print the table with friendly name and entity ID
-    table = [("Friendly Name", "Current Entity ID", "New Entity ID")] + common.align_strings(
-        rename_data
-    )
+    table = [
+        ("Friendly Name", "Current Entity ID", "New Entity ID")
+    ] + common.align_strings(rename_data)
     print(tabulate.tabulate(table, headers="firstrow", tablefmt="github"))
 
     # Same table, but without whitespace for alignment
@@ -120,10 +121,8 @@ def rename_entities(rename_data):
         if update_result["success"]:
             print(f"Entity '{entity_id}' renamed to '{new_entity_id}' successfully!")
         else:
-            error_msg = update_result.get('error', {}).get('message', 'Unknown error')
-            print(
-                f"Failed to rename entity '{entity_id}': {error_msg}"
-            )
+            error_msg = update_result.get("error", {}).get("message", "Unknown error")
+            print(f"Failed to rename entity '{entity_id}': {error_msg}")
 
     ws.close()
 

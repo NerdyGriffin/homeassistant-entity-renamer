@@ -10,6 +10,7 @@ import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
+
 def get_automation_id(ws, entity_id, msg_id):
     msg_id += 1
     ws.send(
