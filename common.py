@@ -5,12 +5,13 @@ import config
 import difflib
 import requests
 import re
+from typing import List, Dict, Set, Tuple, Optional, Any, Union
 
 # Determine the protocol based on TLS configuration
 TLS_S = "s" if config.TLS else ""
 
 
-def connect_websocket():
+def connect_websocket() -> Optional[websocket.WebSocket]:
     """
     Establishes a WebSocket connection to Home Assistant and authenticates.
     Returns the websocket object if successful, None otherwise.
@@ -38,7 +39,7 @@ def connect_websocket():
     return ws
 
 
-def align_strings(table):
+def align_strings(table: List[Tuple[Any, ...]]) -> List[Tuple[Any, ...]]:
     """
     Aligns columns in a table by splitting strings at a delimiter ('.').
     Used for aligning entity IDs like 'domain.name'.
@@ -61,7 +62,7 @@ def align_strings(table):
 
         max_length = max([len(s.split(alignment_char)[0]) for s in strings_to_align])
 
-        def align_string(s):
+        def align_string(s: Any) -> Any:
             if not isinstance(s, str):
                 return s
             s_split = s.split(alignment_char, maxsplit=1)
@@ -82,7 +83,7 @@ def align_strings(table):
     return table
 
 
-def get_valid_entities(ws, msg_id):
+def get_valid_entities(ws: websocket.WebSocket, msg_id: int) -> Tuple[Set[str], int]:
     """
     Fetches all valid entity IDs from the Entity Registry and the State Machine.
     Returns a set of entity IDs and the updated msg_id.
@@ -114,7 +115,7 @@ def get_valid_entities(ws, msg_id):
     return entities, msg_id
 
 
-def suggest_fix(broken_ref, valid_entities):
+def suggest_fix(broken_ref: str, valid_entities: Set[str]) -> List[str]:
     """
     Suggests potential fixes for a broken entity reference using fuzzy matching
     and common suffix removal.
@@ -166,7 +167,7 @@ def suggest_fix(broken_ref, valid_entities):
     return unique_suggestions
 
 
-def save_automation_config(automation_config):
+def save_automation_config(automation_config: Dict[str, Any]) -> bool:
     """
     Saves an automation configuration to Home Assistant via the HTTP API.
     """
@@ -195,7 +196,7 @@ def save_automation_config(automation_config):
         return False
 
 
-def replace_references(data, old_ref, new_ref):
+def replace_references(data: Union[Dict, List], old_ref: str, new_ref: str) -> bool:
     """
     Recursively replace references in a config object (dict or list).
     Handles exact matches and substrings (e.g. in templates) using word boundaries.
@@ -234,7 +235,9 @@ def replace_references(data, old_ref, new_ref):
     return modified
 
 
-def get_device_registry(ws, msg_id):
+def get_device_registry(
+    ws: websocket.WebSocket, msg_id: int
+) -> Tuple[Dict[str, Any], int]:
     """
     Fetches the device registry.
     Returns a dictionary of devices indexed by ID, and the updated msg_id.
@@ -254,7 +257,9 @@ def get_device_registry(ws, msg_id):
     return devices, msg_id
 
 
-def find_related_automations(ws, entity_id, msg_id):
+def find_related_automations(
+    ws: websocket.WebSocket, entity_id: str, msg_id: int
+) -> Tuple[List[str], int]:
     """
     Finds automations related to a given entity ID.
     Returns a list of automation entity IDs and the updated msg_id.
@@ -281,7 +286,9 @@ def find_related_automations(ws, entity_id, msg_id):
     return automations, msg_id
 
 
-def get_automation_config(ws, automation_entity_id, msg_id):
+def get_automation_config(
+    ws: websocket.WebSocket, automation_entity_id: str, msg_id: int
+) -> Tuple[Optional[Dict[str, Any]], int]:
     """
     Fetches the configuration for a specific automation.
     Returns the config dict and the updated msg_id.
@@ -307,7 +314,7 @@ def get_automation_config(ws, automation_entity_id, msg_id):
     return None, msg_id
 
 
-def get_valid_services(ws, msg_id):
+def get_valid_services(ws: websocket.WebSocket, msg_id: int) -> Tuple[Set[str], int]:
     """
     Fetches all valid services.
     Returns a set of service IDs (domain.service) and the updated msg_id.
@@ -327,7 +334,10 @@ def get_valid_services(ws, msg_id):
             services.add(f"{domain}.{service}")
     return services, msg_id
 
-def list_dashboards(ws, msg_id):
+
+def list_dashboards(
+    ws: websocket.WebSocket, msg_id: int
+) -> Tuple[List[Dict[str, Any]], int]:
     """
     Lists all Lovelace dashboards.
     Returns a list of dashboard objects and the updated msg_id.
@@ -343,7 +353,10 @@ def list_dashboards(ws, msg_id):
 
     return dashboards, msg_id
 
-def get_dashboard_config(ws, url_path, msg_id):
+
+def get_dashboard_config(
+    ws: websocket.WebSocket, url_path: Optional[str], msg_id: int
+) -> Tuple[Optional[Dict[str, Any]], int]:
     """
     Fetches the configuration for a specific dashboard.
     If url_path is None, fetches the default dashboard.
@@ -362,7 +375,13 @@ def get_dashboard_config(ws, url_path, msg_id):
         return result["result"], msg_id
     return None, msg_id
 
-def save_dashboard_config(ws, url_path, config_data, msg_id):
+
+def save_dashboard_config(
+    ws: websocket.WebSocket,
+    url_path: Optional[str],
+    config_data: Dict[str, Any],
+    msg_id: int,
+) -> Tuple[bool, int]:
     """
     Saves the configuration for a specific dashboard.
     Returns True if successful, and the updated msg_id.
