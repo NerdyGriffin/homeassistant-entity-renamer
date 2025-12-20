@@ -150,7 +150,7 @@ def save_automation_config(automation_config):
         return False
 
 
-def update_automation_references(ws, updates, msg_id, execute=False):
+def update_automation_references(ws, updates, msg_id, execute=False, verbose=False):
     print("\nChecking for automation references to update...")
 
     automation_updates = {}
@@ -247,7 +247,7 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             update_local_entity_ids(entities, updates)
 
         # Update automation references (First Pass)
-        msg_id = update_automation_references(ws, updates, msg_id, execute=execute)
+        msg_id = update_automation_references(ws, updates, msg_id, execute=execute, verbose=verbose)
 
     # Prepare data for table
     # Columns: Entity ID, Current Name, Proposed Name
@@ -322,7 +322,7 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             update_local_entity_ids(entities, updates)
 
             # Update automation references (Second Pass)
-            msg_id = update_automation_references(ws, updates, msg_id, execute=True)
+            msg_id = update_automation_references(ws, updates, msg_id, execute=True, verbose=verbose)
 
 
 def apply_name_changes(ws, table_data, verbose, msg_id):
