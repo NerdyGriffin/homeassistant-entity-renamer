@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 import argparse
 import json
 import re
 import tabulate
 import common
+import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -316,6 +318,7 @@ if __name__ == "__main__":
         help="Show all entities, including those with empty names",
     )
     parser.set_defaults(recreate_ids=True)
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     ws = common.connect_websocket()

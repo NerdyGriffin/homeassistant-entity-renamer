@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 import argparse
 import config
@@ -8,6 +9,7 @@ import re
 import requests
 import tabulate
 import common
+import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -139,6 +141,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-csv", dest="output_csv", help="Output preview table to CSV."
     )
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     if args.search_regex:

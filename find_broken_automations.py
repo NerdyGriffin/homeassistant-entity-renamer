@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+# PYTHON_ARGCOMPLETE_OK
 
 import argparse
 import json
 import re
 import tabulate
 import common
+import argcomplete
 
 tabulate.PRESERVE_WHITESPACE = True
 
@@ -220,6 +222,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Attempt to auto-fix broken references interactively",
     )
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
     ws = common.connect_websocket()
