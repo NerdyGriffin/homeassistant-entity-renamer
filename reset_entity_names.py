@@ -1,61 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import config
 import json
 import re
-import requests
-import ssl
 import tabulate
-import websocket
+import common
 
 tabulate.PRESERVE_WHITESPACE = True
-
-# Determine the protocol based on TLS configuration
-TLS_S = "s" if config.TLS else ""
-
-# Header containing the access token
-headers = {
-    "Authorization": f"Bearer {config.ACCESS_TOKEN}",
-    "Content-Type": "application/json",
-}
-
-
-def align_strings(table):
-    alignment_char = "."
-
-    if len(table) == 0:
-        return
-
-    for column in range(len(table[0])):
-        # Get the column data from the table
-        column_data = [row[column] for row in table]
-
-        # Find the maximum length of the first part of the split strings
-        strings_to_align = [s for s in column_data if alignment_char in s]
-        if len(strings_to_align) == 0:
-            continue
-
-        max_length = max([len(s.split(alignment_char)[0]) for s in strings_to_align])
-
-        def align_string(s):
-            s_split = s.split(alignment_char, maxsplit=1)
-            if len(s_split) == 1:
-                return s
-            else:
-                return f"{s_split[0]:>{max_length}}.{s_split[1]}"
-
-        # Create the modified table by replacing the column with aligned strings
-        table = [
-            tuple(
-                align_string(value) if i == column else value
-                for i, value in enumerate(row)
-            )
-            for row in table
-        ]
-
-    return table
-
 
 def list_entities(ws, search_regex=None):
     msg_id = 1
@@ -85,78 +36,13 @@ def list_entities(ws, search_regex=None):
 
     return entities
 
-
-def find_related_automations(ws, entity_id, msg_id):
-    msg_id += 1
-    ws.send(
-        json.dumps(
-            {
-                "id": msg_id,
-                "type": "search/related",
-                "item_type": "entity",
-                "item_id": entity_id,
-            }
-        )
-    )
-    result = ws.recv()
-    result = json.loads(result)
-
-    automations = []
-    if result["success"]:
-        if "automation" in result["result"]:
-            automations = result["result"]["automation"]
-
-    return automations, msg_id
-
-
-def get_automation_config(ws, automation_entity_id, msg_id):
-    msg_id += 1
-    ws.send(
-        json.dumps(
-            {
-                "id": msg_id,
-                "type": "automation/config",
-                "entity_id": automation_entity_id,
-            }
-        )
-    )
-    result = ws.recv()
-    result = json.loads(result)
-
-    if result["success"]:
-        return result["result"], msg_id
-    return None, msg_id
-
-
-def save_automation_config(automation_config):
-    automation_id = automation_config.get("id")
-    if not automation_id:
-        print("Error: Automation config missing ID.")
-        return False
-
-    url = f"http{TLS_S}://{config.HOST}/api/config/automation/config/{automation_id}"
-    headers = {
-        "Authorization": f"Bearer {config.ACCESS_TOKEN}",
-        "Content-Type": "application/json",
-    }
-
-    response = requests.post(
-        url, headers=headers, json=automation_config, verify=config.SSL_VERIFY
-    )
-    if response.status_code == 200:
-        return True
-    else:
-        print(f"Failed to save automation {automation_id}: {response.text}")
-        return False
-
-
 def update_automation_references(ws, updates, msg_id, execute=False, verbose=False):
     print("\nChecking for automation references to update...")
 
     automation_updates = {}
 
     for old_id, new_id in updates:
-        automations, msg_id = find_related_automations(ws, old_id, msg_id)
+        automations, msg_id = common.find_related_automations(ws, old_id, msg_id)
         for auto_id in automations:
             if auto_id not in automation_updates:
                 automation_updates[auto_id] = []
@@ -169,19 +55,15 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
     print(f"Found {len(automation_updates)} automations to update.")
 
     for auto_entity_id, replacements in automation_updates.items():
-        config_data, msg_id = get_automation_config(ws, auto_entity_id, msg_id)
+        config_data, msg_id = common.get_automation_config(ws, auto_entity_id, msg_id)
         if not config_data:
             print(f"Could not fetch config for {auto_entity_id}")
             continue
 
-        config_str = json.dumps(config_data)
-
+        # Use common.replace_references for safe replacement
         modified = False
         for old_id, new_id in replacements:
-            pattern = re.compile(re.escape(old_id) + r"(?![a-z0-9_.-])", re.IGNORECASE)
-
-            if pattern.search(config_str):
-                config_str = pattern.sub(new_id, config_str)
+            if common.replace_references(config_data, old_id, new_id):
                 modified = True
                 if execute:
                     print(
@@ -190,8 +72,7 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
 
         if modified:
             if execute:
-                new_config = json.loads(config_str)
-                if save_automation_config(new_config):
+                if common.save_automation_config(config_data):
                     print(f"  Successfully saved automation {auto_entity_id}")
                 else:
                     print(f"  Failed to save automation {auto_entity_id}")
@@ -207,23 +88,6 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
 
     return msg_id
 
-
-def get_device_registry(ws, msg_id):
-    msg_id += 1
-    ws.send(json.dumps({"id": msg_id, "type": "config/device_registry/list"}))
-    result = ws.recv()
-    result = json.loads(result)
-
-    devices = {}
-    if result["success"]:
-        for d in result["result"]:
-            devices[d["id"]] = d
-    else:
-        print("Failed to list devices.")
-
-    return devices, msg_id
-
-
 def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=False):
     if not entities:
         return
@@ -231,7 +95,7 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
     msg_id = 100  # Start safely above list_entities id
 
     # Fetch device registry to handle custom device names
-    devices, msg_id = get_device_registry(ws, msg_id)
+    devices, msg_id = common.get_device_registry(ws, msg_id)
 
     # Check for automatic entity ID updates (First Pass)
     updates = []
@@ -296,7 +160,7 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
     if table_data:
         print("")
         headers = ["Entity ID", "Current Name", "Proposed Name"]
-        table = [headers] + align_strings(table_data)
+        table = [headers] + common.align_strings(table_data)
         print(tabulate.tabulate(table, headers="firstrow", tablefmt="github"))
     elif not verbose:
         print(
@@ -429,26 +293,6 @@ def update_local_entity_ids(target_entities, updates):
             e["entity_id"] = update_map[e["entity_id"]]
 
 
-def connect_websocket():
-    websocket_url = f"ws{TLS_S}://{config.HOST}/api/websocket"
-    sslopt = {"cert_reqs": ssl.CERT_NONE} if not config.SSL_VERIFY else {}
-    ws = websocket.WebSocket(sslopt=sslopt)
-    ws.connect(websocket_url)
-
-    auth_req = ws.recv()
-
-    # Authenticate with Home Assistant
-    auth_msg = json.dumps({"type": "auth", "access_token": config.ACCESS_TOKEN})
-    ws.send(auth_msg)
-    auth_result = ws.recv()
-    auth_result = json.loads(auth_result)
-    if auth_result["type"] != "auth_ok":
-        print("Authentication failed. Check your access token.")
-        ws.close()
-        return None
-    return ws
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reset Entity Names to Null")
     parser.add_argument(
@@ -474,7 +318,7 @@ if __name__ == "__main__":
     parser.set_defaults(recreate_ids=True)
     args = parser.parse_args()
 
-    ws = connect_websocket()
+    ws = common.connect_websocket()
     if ws:
         try:
             entities = list_entities(ws, args.search_regex)

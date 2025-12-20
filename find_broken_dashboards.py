@@ -1,158 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import config
 import json
 import re
-import requests
-import ssl
 import tabulate
-import websocket
-import difflib
+import common
 
 tabulate.PRESERVE_WHITESPACE = True
-
-# Determine the protocol based on TLS configuration
-TLS_S = "s" if config.TLS else ""
-
-
-def connect_websocket():
-    websocket_url = f"ws{TLS_S}://{config.HOST}/api/websocket"
-    sslopt = {"cert_reqs": ssl.CERT_NONE} if not config.SSL_VERIFY else {}
-    ws = websocket.WebSocket(sslopt=sslopt)
-    ws.connect(websocket_url)
-
-    auth_req = ws.recv()
-
-    # Authenticate with Home Assistant
-    auth_msg = json.dumps({"type": "auth", "access_token": config.ACCESS_TOKEN})
-    ws.send(auth_msg)
-    auth_result = ws.recv()
-    auth_result = json.loads(auth_result)
-    if auth_result["type"] != "auth_ok":
-        print("Authentication failed. Check your access token.")
-        ws.close()
-        return None
-    return ws
-
-
-def get_valid_entities(ws, msg_id):
-    # Get registry entities
-    msg_id += 1
-    ws.send(json.dumps({"id": msg_id, "type": "config/entity_registry/list"}))
-    result = ws.recv()
-    result = json.loads(result)
-
-    entities = set()
-    if result["success"]:
-        entities = {e["entity_id"] for e in result["result"]}
-    else:
-        print("Failed to list registry entities.")
-
-    # Get state entities (includes non-registry items like zone.home, sun.sun)
-    msg_id += 1
-    ws.send(json.dumps({"id": msg_id, "type": "get_states"}))
-    result = ws.recv()
-    result = json.loads(result)
-
-    if result["success"]:
-        for e in result["result"]:
-            entities.add(e["entity_id"])
-    else:
-        print("Failed to list states.")
-
-    return entities, msg_id
-
-
-def list_dashboards(ws, msg_id):
-    msg_id += 1
-    ws.send(json.dumps({"id": msg_id, "type": "lovelace/dashboards/list"}))
-    result = ws.recv()
-    result = json.loads(result)
-
-    dashboards = []
-    if result["success"]:
-        dashboards = result["result"]
-
-    # Add the default dashboard (null url_path usually implies default, but we treat it specially)
-    # Actually, the default dashboard is usually not in this list if it's auto-generated,
-    # but if it's in storage mode, it might be accessible via 'lovelace/config' without url_path.
-    # We will handle the default dashboard separately.
-
-    return dashboards, msg_id
-
-
-def get_dashboard_config(ws, url_path, msg_id):
-    msg_id += 1
-    payload = {"id": msg_id, "type": "lovelace/config"}
-    if url_path:
-        payload["url_path"] = url_path
-
-    ws.send(json.dumps(payload))
-    result = ws.recv()
-    result = json.loads(result)
-
-    if result["success"]:
-        return result["result"], msg_id
-    return None, msg_id
-
-
-def save_dashboard_config(ws, url_path, config_data, msg_id):
-    msg_id += 1
-    payload = {"id": msg_id, "type": "lovelace/config/save", "config": config_data}
-    if url_path:
-        payload["url_path"] = url_path
-
-    ws.send(json.dumps(payload))
-    result = ws.recv()
-    result = json.loads(result)
-
-    return result["success"], msg_id
-
-
-def suggest_fix(broken_ref, valid_entities):
-    if "." not in broken_ref:
-        return []
-
-    domain, name = broken_ref.split(".", 1)
-    suggestions = []
-
-    # 1. Fuzzy matching using difflib
-    same_domain_entities = [e for e in valid_entities if e.startswith(f"{domain}.")]
-    matches = difflib.get_close_matches(
-        broken_ref, same_domain_entities, n=3, cutoff=0.6
-    )
-    suggestions.extend(matches)
-
-    # 2. Common suffixes
-    suffixes = [
-        "_switch",
-        "_light",
-        "_sensor",
-        "_binary_sensor",
-        "_cover",
-        "_fan",
-        "_lock",
-        "_climate",
-        "_media_player",
-    ]
-    for suffix in suffixes:
-        if name.endswith(suffix):
-            new_name = name[: -len(suffix)]
-            candidate = f"{domain}.{new_name}"
-            if candidate in valid_entities:
-                suggestions.append(candidate)
-
-    # Deduplicate
-    seen = set()
-    unique_suggestions = []
-    for s in suggestions:
-        if s not in seen:
-            unique_suggestions.append(s)
-            seen.add(s)
-
-    return unique_suggestions
-
 
 def find_entity_references(data, valid_entities):
     """Recursively find all strings that look like entity IDs."""
@@ -178,39 +32,14 @@ def find_entity_references(data, valid_entities):
     return refs
 
 
-def replace_references(data, old_ref, new_ref):
-    """Recursively replace references in the config object."""
-    modified = False
-
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if isinstance(value, str) and value == old_ref:
-                data[key] = new_ref
-                modified = True
-            elif isinstance(value, (dict, list)):
-                if replace_references(value, old_ref, new_ref):
-                    modified = True
-
-    elif isinstance(data, list):
-        for i, item in enumerate(data):
-            if isinstance(item, str) and item == old_ref:
-                data[i] = new_ref
-                modified = True
-            elif isinstance(item, (dict, list)):
-                if replace_references(item, old_ref, new_ref):
-                    modified = True
-
-    return modified
-
-
 def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
     print("Fetching entities...")
     msg_id = 1
-    valid_entities, msg_id = get_valid_entities(ws, msg_id)
+    valid_entities, msg_id = common.get_valid_entities(ws, msg_id)
     print(f"Found {len(valid_entities)} valid entities.")
 
     print("Fetching dashboards...")
-    dashboards, msg_id = list_dashboards(ws, msg_id)
+    dashboards, msg_id = common.list_dashboards(ws, msg_id)
 
     # Add a pseudo-entry for the default dashboard
     dashboards.insert(
@@ -234,7 +63,7 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
         url_path = dashboard.get("url_path")
         title = dashboard.get("title", "Unknown")
 
-        config_data, msg_id = get_dashboard_config(ws, url_path, msg_id)
+        config_data, msg_id = common.get_dashboard_config(ws, url_path, msg_id)
         if not config_data:
             if verbose:
                 print(
@@ -309,7 +138,7 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
 
             if fix:
                 for broken_ref in filtered_broken_refs:
-                    suggestions = suggest_fix(broken_ref, valid_entities)
+                    suggestions = common.suggest_fix(broken_ref, valid_entities)
                     if suggestions:
                         print(f"\nFound potential fix for '{broken_ref}':")
                         for i, suggestion in enumerate(suggestions, 1):
@@ -319,13 +148,13 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
                         if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                             selected_fix = suggestions[int(answer) - 1]
 
-                            if replace_references(
+                            if common.replace_references(
                                 config_data, broken_ref, selected_fix
                             ):
                                 print(f"  Updated config in memory.")
                                 # Save immediately? Or batch?
                                 # Let's save immediately to be safe.
-                                success, msg_id = save_dashboard_config(
+                                success, msg_id = common.save_dashboard_config(
                                     ws, url_path, config_data, msg_id
                                 )
                                 if success:
@@ -359,7 +188,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    ws = connect_websocket()
+    ws = common.connect_websocket()
     if ws:
         try:
             find_broken_dashboards(ws, args.verbose, args.fix, args.dashboard)
