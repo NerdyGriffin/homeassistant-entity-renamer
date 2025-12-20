@@ -1,2 +1,6 @@
 config.py
 __pycache__/
+venv/
+*.backup
+*.bak
+debug_*.py
