@@ -68,7 +68,7 @@ def list_entities(ws, search_regex=None):
         return []
 
     entities = result["result"]
-    
+
     # Filter out entities that don't belong to a device (e.g. helper groups)
     entities = [e for e in entities if e.get("device_id")]
 
@@ -208,11 +208,30 @@ def update_automation_references(ws, updates, msg_id, execute=False):
     return msg_id
 
 
+def get_device_registry(ws, msg_id):
+    msg_id += 1
+    ws.send(json.dumps({"id": msg_id, "type": "config/device_registry/list"}))
+    result = ws.recv()
+    result = json.loads(result)
+
+    devices = {}
+    if result["success"]:
+        for d in result["result"]:
+            devices[d["id"]] = d
+    else:
+        print("Failed to list devices.")
+
+    return devices, msg_id
+
+
 def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=False):
     if not entities:
         return
 
     msg_id = 100  # Start safely above list_entities id
+
+    # Fetch device registry to handle custom device names
+    devices, msg_id = get_device_registry(ws, msg_id)
 
     # Check for automatic entity ID updates (First Pass)
     updates = []
@@ -231,30 +250,60 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
         msg_id = update_automation_references(ws, updates, msg_id, execute=execute)
 
     # Prepare data for table
-    # Columns: Entity ID, Current Name
+    # Columns: Entity ID, Current Name, Proposed Name
     table_data = []
     for e in entities:
         current_name = e.get("name")
-        if current_name is not None or verbose:
-            table_data.append((e["entity_id"], str(current_name)))
+
+        # Determine proposed name
+        target_name = None  # Default target is None (reset to default)
+
+        device_id = e.get("device_id")
+        if device_id and device_id in devices:
+            device = devices[device_id]
+            user_device_name = device.get("name_by_user")
+            original_name = e.get("original_name")
+
+            # If the device has a user-defined name, and the entity has an original name
+            if user_device_name and original_name:
+                # Check if the original name starts with the device's *default* name
+                default_device_name = device.get("name")
+                if default_device_name and original_name.startswith(
+                    default_device_name
+                ):
+                    suffix = original_name[len(default_device_name) :].strip()
+                    target_name = f"{user_device_name} {suffix}".strip()
+
+        # Compare target_name with current_name
+        proposed_name = None
+        if current_name != target_name:
+            if target_name is None:
+                proposed_name = "None"
+            else:
+                proposed_name = target_name
+
+        if proposed_name:
+            table_data.append((e["entity_id"], str(current_name), proposed_name))
+        elif verbose:
+            table_data.append((e["entity_id"], str(current_name), "No Change"))
 
     # Print table
     if table_data:
         print("")
-        headers = ["Entity ID", "Current Name"]
+        headers = ["Entity ID", "Current Name", "Proposed Name"]
         table = [headers] + align_strings(table_data)
         print(tabulate.tabulate(table, headers="firstrow", tablefmt="github"))
     elif not verbose:
         print(
-            "\nNo entities found with custom names. Use --verbose to see all matched entities."
+            "\nNo entities found with custom names (or needing updates). Use --verbose to see all matched entities."
         )
 
     if not execute:
         print("\nDry run complete. Use --execute or -y to apply changes.")
         return
 
-    # Reset names
-    msg_id = rename_entities(ws, entities, verbose, msg_id)
+    # Apply name changes
+    msg_id = apply_name_changes(ws, table_data, verbose, msg_id)
 
     # Check for automatic entity ID updates (Second Pass)
     if recreate_ids:
@@ -271,29 +320,31 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             msg_id = update_automation_references(ws, updates, msg_id, execute=True)
 
 
-def rename_entities(ws, entities, verbose, msg_id):
-    print("\nResetting names...")
-    for e in entities:
-        entity_id = e["entity_id"]
+def apply_name_changes(ws, table_data, verbose, msg_id):
+    print("\nApplying name changes...")
+    for row in table_data:
+        entity_id = row[0]
+        proposed_name = row[2]
 
-        if e.get("name") is None:
-            if verbose:
-                print(f"Skipping {entity_id}: Name already empty.")
+        if proposed_name == "No Change":
             continue
+
+        # Convert "None" string back to actual None
+        new_name = None if proposed_name == "None" else proposed_name
 
         msg_id += 1
         update_msg = {
             "id": msg_id,
             "type": "config/entity_registry/update",
             "entity_id": entity_id,
-            "name": None,
+            "name": new_name,
         }
         ws.send(json.dumps(update_msg))
         update_result = ws.recv()
         update_result = json.loads(update_result)
 
         if update_result["success"]:
-            print(f"Successfully updated {entity_id}")
+            print(f"Successfully updated {entity_id} to '{new_name}'")
         else:
             error_msg = update_result.get("error", {}).get("message", "Unknown error")
             print(f"Failed to update {entity_id}: {error_msg}")
