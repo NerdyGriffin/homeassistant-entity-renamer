@@ -396,3 +396,50 @@ def save_dashboard_config(
     result = json.loads(result)
 
     return result["success"], msg_id
+
+def get_registry_entry(
+    ws: websocket.WebSocket, entity_id: str, msg_id: int
+) -> Tuple[Optional[Dict[str, Any]], int]:
+    """
+    Fetches the entity registry entry for a specific entity.
+    Returns the entry dict and the updated msg_id.
+    """
+    msg_id += 1
+    ws.send(
+        json.dumps(
+            {"id": msg_id, "type": "config/entity_registry/get", "entity_id": entity_id}
+        )
+    )
+    result = ws.recv()
+    result = json.loads(result)
+
+    if result["success"]:
+        return result["result"], msg_id
+    return None, msg_id
+
+
+def update_config_entry_options(
+    ws: websocket.WebSocket, entry_id: str, options: Dict[str, Any], msg_id: int
+) -> Tuple[bool, int]:
+    """
+    Updates the options of a config entry.
+    Returns True if successful, and the updated msg_id.
+    """
+    msg_id += 1
+    ws.send(
+        json.dumps(
+            {
+                "id": msg_id,
+                "type": "config_entries/update",
+                "entry_id": entry_id,
+                "options": options,
+            }
+        )
+    )
+    result = ws.recv()
+    result = json.loads(result)
+
+    if not result["success"]:
+        print(f"Failed to update config entry {entry_id}: {result.get('error')}")
+
+    return result["success"], msg_id
