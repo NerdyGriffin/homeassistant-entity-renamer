@@ -85,6 +85,9 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
         # This is a bit heuristic.
         filtered_broken_refs = []
         for ref in broken_refs:
+            if common.is_ignored(ref):
+                continue
+
             domain = ref.split(".")[0]
             if domain in [
                 "input_select",

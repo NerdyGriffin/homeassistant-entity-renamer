@@ -145,6 +145,9 @@ def find_broken_references(ws, verbose=False, fix=False):
             if match.startswith("input_select."):
                 continue
 
+            if common.is_ignored(match):
+                continue
+
             if match not in valid_set:
                 broken_refs.append((script_id, match))
                 if verbose:
@@ -221,6 +224,7 @@ if __name__ == "__main__":
         try:
             if find_broken_references(ws, args.verbose, args.fix):
                 import sys
+
                 sys.exit(1)
         finally:
             ws.close()

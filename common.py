@@ -10,6 +10,20 @@ from typing import List, Dict, Set, Tuple, Optional, Any, Union
 # Determine the protocol based on TLS configuration
 TLS_S = "s" if config.TLS else ""
 
+# List of references to ignore (known false positives or intentionally missing)
+IGNORED_REFERENCES = {
+    "todo.add_item",  # Often flagged if no todo lists are active
+}
+
+
+def is_ignored(ref: str) -> bool:
+    """
+    Checks if a reference should be ignored.
+    """
+    if ref in IGNORED_REFERENCES:
+        return True
+    return False
+
 
 def connect_websocket() -> Optional[websocket.WebSocket]:
     """
@@ -397,6 +411,7 @@ def save_dashboard_config(
 
     return result["success"], msg_id
 
+
 def get_registry_entry(
     ws: websocket.WebSocket, entity_id: str, msg_id: int
 ) -> Tuple[Optional[Dict[str, Any]], int]:
@@ -444,6 +459,7 @@ def update_config_entry_options(
 
     return result["success"], msg_id
 
+
 def get_script_config(
     ws: websocket.WebSocket, script_entity_id: str, msg_id: int
 ) -> Tuple[Optional[Dict[str, Any]], int]:
@@ -478,12 +494,12 @@ def save_script_config(script_config: Dict[str, Any]) -> bool:
     # Scripts in UI have a unique_id which is used as the ID in the URL
     # However, the config object itself might not have 'id' field like automations do.
     # It usually has 'unique_id'.
-    
+
     script_id = script_config.get("unique_id")
     if not script_id:
         # Fallback: sometimes 'id' is used?
         script_id = script_config.get("id")
-    
+
     if not script_id:
         print("Error: Script config missing unique_id.")
         return False

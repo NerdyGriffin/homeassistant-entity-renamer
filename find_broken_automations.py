@@ -157,6 +157,9 @@ def find_broken_references(ws, verbose=False, fix=False):
             if match.startswith("input_select."):
                 continue  # Options might look like IDs? No, usually not dot separated unless value is an ID.
 
+            if common.is_ignored(match):
+                continue
+
             if match not in valid_set:
                 broken_refs.append((auto_id, match))
                 if verbose:
