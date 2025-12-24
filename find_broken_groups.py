@@ -95,25 +95,29 @@ def find_broken_groups(ws, verbose=False, fix=False):
                 domain = entity_id.split(".")[0]
 
                 # Check if it's a config entry helper
-                registry_entry, msg_id = common.get_registry_entry(ws, entity_id, msg_id)
-                config_entry_id = registry_entry.get("config_entry_id") if registry_entry else None
+                registry_entry, msg_id = common.get_registry_entry(
+                    ws, entity_id, msg_id
+                )
+                config_entry_id = (
+                    registry_entry.get("config_entry_id") if registry_entry else None
+                )
 
                 if not config_entry_id and domain != "group":
                     print(
                         f"  Skipping {entity_id}: Auto-fix only supported for 'group' domain or Helper entities."
                     )
                     continue
-                
+
                 # Determine if we can fix it
                 can_fix = False
                 if domain == "group" and not config_entry_id:
-                    can_fix = True # Legacy group
+                    can_fix = True  # Legacy group
                 elif config_entry_id:
-                    can_fix = True # Helper (attempt)
-                
+                    can_fix = True  # Helper (attempt)
+
                 if not can_fix:
-                     print(f"  Skipping {entity_id}: Cannot determine how to update.")
-                     continue
+                    print(f"  Skipping {entity_id}: Cannot determine how to update.")
+                    continue
 
                 current_members = list(bg["members"])
                 modified = False
@@ -164,9 +168,13 @@ def find_broken_groups(ws, verbose=False, fix=False):
                             ws, config_entry_id, {"entities": current_members}, msg_id
                         )
                         if success:
-                            print(f"  Successfully updated config entry for {entity_id}")
+                            print(
+                                f"  Successfully updated config entry for {entity_id}"
+                            )
                         else:
-                            print(f"  Failed to update config entry for {entity_id}. Please update via UI.")
+                            print(
+                                f"  Failed to update config entry for {entity_id}. Please update via UI."
+                            )
                     else:
                         # Legacy group update
                         object_id = entity_id.split(".", 1)[1]
@@ -177,9 +185,11 @@ def find_broken_groups(ws, verbose=False, fix=False):
                             print(f"  Successfully updated {entity_id}")
                         else:
                             print(f"  Failed to update {entity_id}")
+        return True
 
     else:
         print("\nNo broken groups found.")
+        return False
 
 
 if __name__ == "__main__":
@@ -198,6 +208,9 @@ if __name__ == "__main__":
     ws = common.connect_websocket()
     if ws:
         try:
-            find_broken_groups(ws, args.verbose, args.fix)
+            if find_broken_groups(ws, args.verbose, args.fix):
+                import sys
+
+                sys.exit(1)
         finally:
             ws.close()

@@ -197,8 +197,10 @@ def find_broken_references(ws, verbose=False, fix=False):
                         )
                     else:
                         print("  Skipped.")
+        return True
     else:
         print("\nNo broken references found.")
+        return False
 
 
 if __name__ == "__main__":
@@ -217,6 +219,8 @@ if __name__ == "__main__":
     ws = common.connect_websocket()
     if ws:
         try:
-            find_broken_references(ws, args.verbose, args.fix)
+            if find_broken_references(ws, args.verbose, args.fix):
+                import sys
+                sys.exit(1)
         finally:
             ws.close()

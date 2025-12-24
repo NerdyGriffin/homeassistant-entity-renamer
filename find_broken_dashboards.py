@@ -62,6 +62,7 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
 
     print(f"Scanning {len(dashboards)} dashboards...")
 
+    found_issues = False
     for dashboard in dashboards:
         url_path = dashboard.get("url_path")
         title = dashboard.get("title", "Unknown")
@@ -129,6 +130,7 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
             filtered_broken_refs.append(ref)
 
         if filtered_broken_refs:
+            found_issues = True
             print(
                 f"\nBroken references in dashboard '{title}' ({url_path or 'default'}):"
             )
@@ -173,6 +175,8 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
         elif verbose:
             print(f"No broken references found in '{title}'.")
 
+    return found_issues
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find Broken Dashboard References")
@@ -195,6 +199,9 @@ if __name__ == "__main__":
     ws = common.connect_websocket()
     if ws:
         try:
-            find_broken_dashboards(ws, args.verbose, args.fix, args.dashboard)
+            if find_broken_dashboards(ws, args.verbose, args.fix, args.dashboard):
+                import sys
+
+                sys.exit(1)
         finally:
             ws.close()

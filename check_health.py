@@ -5,6 +5,7 @@ import argparse
 import subprocess
 import sys
 import argcomplete
+import tabulate
 
 
 def run_check(script_name, description, fix=False, verbose=False):
@@ -19,11 +20,14 @@ def run_check(script_name, description, fix=False, verbose=False):
         cmd.append("--verbose")
 
     try:
-        subprocess.run(cmd, check=False)
+        result = subprocess.run(cmd, check=False)
+        return result.returncode
     except FileNotFoundError:
         print(f"Error: Script {script_name} not found.")
+        return -1
     except Exception as e:
         print(f"Error running {script_name}: {e}")
+        return -1
 
 
 def main():
@@ -46,12 +50,28 @@ def main():
         ("find_broken_dashboards.py", "Checking Dashboards"),
     ]
 
+    results = []
     for script, desc in checks:
-        run_check(script, desc, args.fix, args.verbose)
+        code = run_check(script, desc, args.fix, args.verbose)
+        results.append((desc, code))
 
     print(f"\n{'='*60}")
-    print("All checks completed.")
+    print("Health Check Summary")
     print(f"{'='*60}")
+
+    summary_data = []
+    for desc, code in results:
+        if code == 0:
+            status = "PASS"
+        elif code == 1:
+            status = "FAIL"  # Issues found
+        else:
+            status = "ERROR"
+        summary_data.append([desc, status])
+
+    print(
+        tabulate.tabulate(summary_data, headers=["Check", "Status"], tablefmt="github")
+    )
 
 
 if __name__ == "__main__":
