@@ -443,3 +443,66 @@ def update_config_entry_options(
         print(f"Failed to update config entry {entry_id}: {result.get('error')}")
 
     return result["success"], msg_id
+
+def get_script_config(
+    ws: websocket.WebSocket, script_entity_id: str, msg_id: int
+) -> Tuple[Optional[Dict[str, Any]], int]:
+    """
+    Fetches the configuration for a specific script.
+    Returns the config dict and the updated msg_id.
+    """
+    msg_id += 1
+    ws.send(
+        json.dumps(
+            {
+                "id": msg_id,
+                "type": "script/config",
+                "entity_id": script_entity_id,
+            }
+        )
+    )
+    result = ws.recv()
+    result = json.loads(result)
+
+    if result["success"]:
+        if "config" in result["result"]:
+            return result["result"]["config"], msg_id
+        return result["result"], msg_id
+    return None, msg_id
+
+
+def save_script_config(script_config: Dict[str, Any]) -> bool:
+    """
+    Saves a script configuration to Home Assistant via the HTTP API.
+    """
+    # Scripts in UI have a unique_id which is used as the ID in the URL
+    # However, the config object itself might not have 'id' field like automations do.
+    # It usually has 'unique_id'.
+    
+    script_id = script_config.get("unique_id")
+    if not script_id:
+        # Fallback: sometimes 'id' is used?
+        script_id = script_config.get("id")
+    
+    if not script_id:
+        print("Error: Script config missing unique_id.")
+        return False
+
+    url = f"http{TLS_S}://{config.HOST}/api/config/script/config/{script_id}"
+    headers = {
+        "Authorization": f"Bearer {config.ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            url, headers=headers, json=script_config, verify=config.SSL_VERIFY
+        )
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Failed to save script {script_id}: {response.text}")
+            return False
+    except Exception as e:
+        print(f"Exception while saving script {script_id}: {e}")
+        return False
