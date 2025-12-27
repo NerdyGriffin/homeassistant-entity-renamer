@@ -129,9 +129,8 @@ def find_broken_groups(ws, verbose=False, fix=False):
                         for i, suggestion in enumerate(suggestions, 1):
                             print(f"  {i}. {suggestion}")
 
-                        answer = input(
-                            f"  Apply a fix? (1-{len(suggestions)}/N/d=delete): "
-                        )
+                        answer = common.prompt_apply_fix(len(suggestions))
+                        # Note: This prompt supports additional 'd' for delete option
                         if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                             selected_fix = suggestions[int(answer) - 1]
                             # Replace in list
@@ -151,7 +150,7 @@ def find_broken_groups(ws, verbose=False, fix=False):
                             print("  Skipped.")
                     else:
                         print(f"\nNo suggestions for '{broken}' in '{entity_id}'.")
-                        answer = input("  Delete this member? (y/N): ")
+                        answer = common.prompt_delete_member()
                         if answer.lower() == "y":
                             current_members = [
                                 m for m in current_members if m != broken
@@ -205,12 +204,9 @@ if __name__ == "__main__":
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    ws = common.connect_websocket()
-    if ws:
-        try:
+    with common.websocket_context() as ws:
+        if ws:
             if find_broken_groups(ws, args.verbose, args.fix):
                 import sys
 
                 sys.exit(1)
-        finally:
-            ws.close()

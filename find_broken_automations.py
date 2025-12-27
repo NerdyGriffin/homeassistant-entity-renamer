@@ -78,49 +78,6 @@ def find_broken_references(ws, verbose=False, fix=False):
 
     broken_refs = []
 
-    # Helper to classify reference
-    def is_likely_service(ref):
-        if "." not in ref:
-            return False
-        domain, name = ref.split(".", 1)
-
-        # Known service domains
-        if domain in [
-            "homeassistant",
-            "system_log",
-            "logger",
-            "persistent_notification",
-            "notify",
-            "tts",
-            "frontend",
-            "recorder",
-            "history",
-            "logbook",
-        ]:
-            return True
-
-        # Common service verbs
-        verbs = [
-            "turn_on",
-            "turn_off",
-            "toggle",
-            "stop",
-            "start",
-            "restart",
-            "reload",
-            "create",
-            "delete",
-            "add_item",
-            "remove_item",
-            "snapshot",
-            "play_media",
-            "trigger",
-        ]
-        if name in verbs:
-            return True
-
-        return False
-
     for auto_id in automations:
         config_data, msg_id = common.get_automation_config(ws, auto_id, msg_id)
         if not config_data:
@@ -137,22 +94,13 @@ def find_broken_references(ws, verbose=False, fix=False):
         # We want to find "value" that looks like "domain.name".
 
         # Simple regex: matches "domain.name" inside quotes
-        matches = re.findall(r'"([a-z0-9_]+\.[a-z0-9_]+)"', config_str, re.IGNORECASE)
+        matches = re.findall(common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE)
 
         for match in matches:
             # Filter out common false positives
             if match == auto_id:
                 continue  # Self reference (id field)
-            if match in [
-                "platform.state",
-                "platform.numeric_state",
-                "platform.template",
-                "platform.time",
-                "platform.sun",
-                "platform.zone",
-                "platform.webhook",
-                "platform.mqtt",
-            ]:
+            if match in common.COMMON_FALSE_POSITIVES:
                 continue
             if match.startswith("input_select."):
                 continue  # Options might look like IDs? No, usually not dot separated unless value is an ID.
@@ -170,7 +118,7 @@ def find_broken_references(ws, verbose=False, fix=False):
         missing_entities = []
 
         for auto_id, ref in broken_refs:
-            if is_likely_service(ref):
+            if common.is_likely_service(ref):
                 missing_services.append((auto_id, ref))
             else:
                 missing_entities.append((auto_id, ref))
@@ -204,7 +152,7 @@ def find_broken_references(ws, verbose=False, fix=False):
                     for i, suggestion in enumerate(suggestions, 1):
                         print(f"  {i}. {suggestion}")
 
-                    answer = input(f"  Apply a fix? (1-{len(suggestions)}/N): ")
+                    answer = common.prompt_apply_fix(len(suggestions))
                     if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                         selected_fix = suggestions[int(answer) - 1]
                         msg_id = apply_fix(
@@ -231,12 +179,9 @@ if __name__ == "__main__":
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    ws = common.connect_websocket()
-    if ws:
-        try:
+    with common.websocket_context() as ws:
+        if ws:
             if find_broken_references(ws, args.verbose, args.fix):
                 import sys
 
                 sys.exit(1)
-        finally:
-            ws.close()

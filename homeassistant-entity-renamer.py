@@ -90,7 +90,7 @@ def process_entities(entity_data, search_regex, replace_regex=None, output_csv=N
     if replace_regex is None:
         return
 
-    answer = input("\nDo you want to proceed with renaming the entities? (y/N): ")
+    answer = common.prompt_confirm_rename()
     if answer.lower() not in ["y", "yes"]:
         print("Renaming process aborted.")
         return
@@ -99,32 +99,30 @@ def process_entities(entity_data, search_regex, replace_regex=None, output_csv=N
 
 
 def rename_entities(rename_data):
-    ws = common.connect_websocket()
-    if not ws:
-        return
+    with common.websocket_context() as ws:
+        if not ws:
+            return
 
-    # Rename the entities
-    msg_id = 1
-    for index, (_, entity_id, new_entity_id) in enumerate(rename_data, start=1):
-        msg_id += 1
-        entity_registry_update_msg = json.dumps(
-            {
-                "id": msg_id,
-                "type": "config/entity_registry/update",
-                "entity_id": entity_id,
-                "new_entity_id": new_entity_id,
-            }
-        )
-        ws.send(entity_registry_update_msg)
-        update_result = ws.recv()
-        update_result = json.loads(update_result)
-        if update_result["success"]:
-            print(f"Entity '{entity_id}' renamed to '{new_entity_id}' successfully!")
-        else:
-            error_msg = update_result.get("error", {}).get("message", "Unknown error")
-            print(f"Failed to rename entity '{entity_id}': {error_msg}")
-
-    ws.close()
+        # Rename the entities
+        msg_id = 1
+        for index, (_, entity_id, new_entity_id) in enumerate(rename_data, start=1):
+            msg_id += 1
+            entity_registry_update_msg = json.dumps(
+                {
+                    "id": msg_id,
+                    "type": "config/entity_registry/update",
+                    "entity_id": entity_id,
+                    "new_entity_id": new_entity_id,
+                }
+            )
+            ws.send(entity_registry_update_msg)
+            update_result = ws.recv()
+            update_result = json.loads(update_result)
+            if update_result["success"]:
+                print(f"Entity '{entity_id}' renamed to '{new_entity_id}' successfully!")
+            else:
+                error_msg = update_result.get("error", {}).get("message", "Unknown error")
+                print(f"Failed to rename entity '{entity_id}': {error_msg}")
 
 
 if __name__ == "__main__":

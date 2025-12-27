@@ -20,7 +20,7 @@ def find_entity_references(data, valid_entities):
             # Check if the value itself is a string that looks like an entity ID
             if isinstance(value, str):
                 # Heuristic: domain.name, no spaces, lowercase
-                if re.match(r"^[a-z0-9_]+\.[a-z0-9_]+$", value):
+                if re.match(common.ENTITY_ID_PATTERN, value):
                     # Exclude known non-entities
                     if value not in ["type", "icon", "name", "theme", "url_path"]:
                         refs.append(value)
@@ -152,7 +152,7 @@ def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):
                         for i, suggestion in enumerate(suggestions, 1):
                             print(f"  {i}. {suggestion}")
 
-                        answer = input(f"  Apply a fix? (1-{len(suggestions)}/N): ")
+                        answer = common.prompt_apply_fix(len(suggestions))
                         if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                             selected_fix = suggestions[int(answer) - 1]
 
@@ -199,12 +199,9 @@ if __name__ == "__main__":
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    ws = common.connect_websocket()
-    if ws:
-        try:
+    with common.websocket_context() as ws:
+        if ws:
             if find_broken_dashboards(ws, args.verbose, args.fix, args.dashboard):
                 import sys
 
                 sys.exit(1)
-        finally:
-            ws.close()

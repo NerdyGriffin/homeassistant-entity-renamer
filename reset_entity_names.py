@@ -328,12 +328,9 @@ if __name__ == "__main__":
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
 
-    ws = common.connect_websocket()
-    if ws:
-        try:
+    with common.websocket_context() as ws:
+        if ws:
             entities = list_entities(ws, args.search_regex)
             process_entities(
                 ws, entities, args.execute, args.recreate_ids, args.verbose
             )
-        finally:
-            ws.close()

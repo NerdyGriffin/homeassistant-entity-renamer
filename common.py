@@ -6,6 +6,7 @@ import difflib
 import requests
 import re
 from typing import List, Dict, Set, Tuple, Optional, Any, Union
+from contextlib import contextmanager
 
 # Determine the protocol based on TLS configuration
 TLS_S = "s" if config.TLS else ""
@@ -15,6 +16,57 @@ IGNORED_REFERENCES = {
     "todo.add_item",  # Often flagged if no todo lists are active
 }
 
+# Regex patterns for entity ID matching
+ENTITY_ID_PATTERN = r"^[a-z0-9_]+\.[a-z0-9_]+$"
+ENTITY_ID_IN_QUOTES_PATTERN = r'"([a-z0-9_]+\.[a-z0-9_]+)"'
+COMMON_FALSE_POSITIVES = {
+    "platform.state",
+    "platform.numeric_state",
+    "platform.template",
+    "platform.time",
+    "platform.sun",
+    "platform.zone",
+    "platform.webhook",
+    "platform.mqtt",
+}
+
+# Known service domains
+KNOWN_SERVICE_DOMAINS = {
+    "homeassistant",
+    "system_log",
+    "logger",
+    "persistent_notification",
+    "notify",
+    "tts",
+    "frontend",
+    "recorder",
+    "history",
+    "logbook",
+}
+
+# Common service verbs
+COMMON_SERVICE_VERBS = {
+    "turn_on",
+    "turn_off",
+    "toggle",
+    "stop",
+    "start",
+    "restart",
+    "reload",
+    "create",
+    "delete",
+    "add_item",
+    "remove_item",
+    "snapshot",
+    "play_media",
+    "trigger",
+}
+
+# User prompt messages
+PROMPT_APPLY_FIX = "  Apply a fix? (1-{max_suggestions}/N): "
+PROMPT_CONFIRM_RENAME = "\nDo you want to proceed with renaming the entities? (y/N): "
+PROMPT_DELETE_MEMBER = "  Delete this member? (y/N): "
+
 
 def is_ignored(ref: str) -> bool:
     """
@@ -23,6 +75,68 @@ def is_ignored(ref: str) -> bool:
     if ref in IGNORED_REFERENCES:
         return True
     return False
+
+
+def is_likely_service(ref: str) -> bool:
+    """
+    Determines if a reference is likely a service call rather than an entity.
+    Checks against known service domains and common service verbs.
+    """
+    if "." not in ref:
+        return False
+    domain, name = ref.split(".", 1)
+
+    # Check if domain is a known service domain
+    if domain in KNOWN_SERVICE_DOMAINS:
+        return True
+
+    # Check if the service verb is common
+    if name in COMMON_SERVICE_VERBS:
+        return True
+
+    return False
+
+
+def prompt_apply_fix(num_suggestions: int) -> str:
+    """
+    Prompts user to apply a fix from a list of suggestions.
+    Returns the user's input.
+    """
+    return input(PROMPT_APPLY_FIX.format(max_suggestions=num_suggestions))
+
+
+def prompt_confirm_rename() -> str:
+    """
+    Prompts user to confirm entity renaming operation.
+    Returns the user's input.
+    """
+    return input(PROMPT_CONFIRM_RENAME)
+
+
+def prompt_delete_member() -> str:
+    """
+    Prompts user to confirm deletion of a group member.
+    Returns the user's input.
+    """
+    return input(PROMPT_DELETE_MEMBER)
+
+
+@contextmanager
+def websocket_context():
+    """
+    Context manager for WebSocket connections.
+    Ensures proper connection cleanup even if errors occur.
+    
+    Usage:
+        with websocket_context() as ws:
+            # use ws
+    """
+    ws = connect_websocket()
+    try:
+        yield ws
+    finally:
+        if ws:
+            ws.close()
 
 
 def connect_websocket() -> Optional[websocket.WebSocket]:
