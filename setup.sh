@@ -12,3 +12,4 @@ echo "Installing dependencies..."
 
 echo "Setup complete. You can activate the virtual environment with:"
 echo "source venv/bin/activate"
+source venv/bin/activate
