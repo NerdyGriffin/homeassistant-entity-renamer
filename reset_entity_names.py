@@ -40,7 +40,7 @@ def list_entities(ws, search_regex=None):
     return entities
 
 
-def update_automation_references(ws, updates, msg_id, execute=False, verbose=False):
+def update_automation_references(ws, updates, msg_id, fix=False, verbose=False):
     print("\nChecking for automation references to update...")
 
     automation_updates = {}
@@ -69,13 +69,13 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
         for old_id, new_id in replacements:
             if common.replace_references(config_data, old_id, new_id):
                 modified = True
-                if execute:
+                if fix:
                     print(
                         f"  Updating reference {old_id} -> {new_id} in {auto_entity_id}"
                     )
 
         if modified:
-            if execute:
+            if fix:
                 if common.save_automation_config(config_data):
                     print(f"  Successfully saved automation {auto_entity_id}")
                 else:
@@ -93,7 +93,7 @@ def update_automation_references(ws, updates, msg_id, execute=False, verbose=Fal
     return msg_id
 
 
-def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=False):
+def process_entities(ws, entities, fix=False, recreate_ids=True, verbose=False):
     if not entities:
         return
 
@@ -111,13 +111,13 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
 
     # Apply automatic entity ID updates (First Pass)
     if recreate_ids and updates:
-        if execute:
+        if fix:
             msg_id = apply_automatic_updates(ws, updates, msg_id)
             update_local_entity_ids(entities, updates)
 
         # Update automation references (First Pass)
         msg_id = update_automation_references(
-            ws, updates, msg_id, execute=execute, verbose=verbose
+            ws, updates, msg_id, fix=fix, verbose=verbose
         )
 
     # Prepare data for table
@@ -174,8 +174,8 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
             "\nNo entities found with custom names (or needing updates). Use --verbose to see all matched entities."
         )
 
-    if not execute:
-        print("\nDry run complete. Use --execute or -y to apply changes.")
+    if not fix:
+        print("\nDry run complete. Use --fix or -f to apply changes.")
         return
 
     # Apply name changes
@@ -194,7 +194,7 @@ def process_entities(ws, entities, execute=False, recreate_ids=True, verbose=Fal
 
             # Update automation references (Second Pass)
             msg_id = update_automation_references(
-                ws, updates, msg_id, execute=True, verbose=verbose
+                ws, updates, msg_id, fix=True, verbose=verbose
             )
 
 
@@ -305,7 +305,7 @@ def update_local_entity_ids(target_entities, updates):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reset Entity Names to Null")
     parser.add_argument(
-        "--execute", "-y", action="store_true", help="Execute the renaming process"
+        "--fix", "-f", action="store_true", help="Execute the renaming process"
     )
     parser.add_argument(
         "--search",
@@ -313,7 +313,7 @@ if __name__ == "__main__":
         help="Regular expression for search. Note: Only searches entity IDs.",
     )
     parser.add_argument(
-        "--no-recreate-ids",
+        "--no-recreate",
         dest="recreate_ids",
         action="store_false",
         help="Disable automatic entity ID recreation",
@@ -331,6 +331,4 @@ if __name__ == "__main__":
     with common.websocket_context() as ws:
         if ws:
             entities = list_entities(ws, args.search_regex)
-            process_entities(
-                ws, entities, args.execute, args.recreate_ids, args.verbose
-            )
+            process_entities(ws, entities, args.fix, args.recreate_ids, args.verbose)

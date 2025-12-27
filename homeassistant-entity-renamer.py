@@ -119,9 +119,13 @@ def rename_entities(rename_data):
             update_result = ws.recv()
             update_result = json.loads(update_result)
             if update_result["success"]:
-                print(f"Entity '{entity_id}' renamed to '{new_entity_id}' successfully!")
+                print(
+                    f"Entity '{entity_id}' renamed to '{new_entity_id}' successfully!"
+                )
             else:
-                error_msg = update_result.get("error", {}).get("message", "Unknown error")
+                error_msg = update_result.get("error", {}).get(
+                    "message", "Unknown error"
+                )
                 print(f"Failed to rename entity '{entity_id}': {error_msg}")
 
 

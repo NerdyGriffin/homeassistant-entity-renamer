@@ -94,7 +94,9 @@ def find_broken_references(ws, verbose=False, fix=False):
         # We want to find "value" that looks like "domain.name".
 
         # Simple regex: matches "domain.name" inside quotes
-        matches = re.findall(common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE)
+        matches = re.findall(
+            common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE
+        )
 
         for match in matches:
             # Filter out common false positives

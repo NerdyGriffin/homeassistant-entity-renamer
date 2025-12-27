@@ -41,7 +41,9 @@ def list_platforms():
 
             print(
                 tabulate.tabulate(
-                    table_data, headers=["Platform", "Count", "Examples"], tablefmt="github"
+                    table_data,
+                    headers=["Platform", "Count", "Examples"],
+                    tablefmt="github",
                 )
             )
 

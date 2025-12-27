@@ -82,7 +82,9 @@ def find_broken_references(ws, verbose=False, fix=False):
         config_str = json.dumps(config_data)
 
         # Regex to find potential entity_ids or service calls
-        matches = re.findall(common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE)
+        matches = re.findall(
+            common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE
+        )
 
         for match in matches:
             # Filter out common false positives

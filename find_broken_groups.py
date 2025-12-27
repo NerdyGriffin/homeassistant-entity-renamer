@@ -129,8 +129,7 @@ def find_broken_groups(ws, verbose=False, fix=False):
                         for i, suggestion in enumerate(suggestions, 1):
                             print(f"  {i}. {suggestion}")
 
-                        answer = common.prompt_apply_fix(len(suggestions))
-                        # Note: This prompt supports additional 'd' for delete option
+                        answer = common.prompt_apply_fix_with_delete(len(suggestions))
                         if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                             selected_fix = suggestions[int(answer) - 1]
                             # Replace in list

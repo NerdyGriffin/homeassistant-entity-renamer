@@ -64,6 +64,7 @@ COMMON_SERVICE_VERBS = {
 
 # User prompt messages
 PROMPT_APPLY_FIX = "  Apply a fix? (1-{max_suggestions}/N): "
+PROMPT_APPLY_FIX_WITH_DELETE = "  Apply a fix? (1-{max_suggestions}/N/d=delete): "
 PROMPT_CONFIRM_RENAME = "\nDo you want to proceed with renaming the entities? (y/N): "
 PROMPT_DELETE_MEMBER = "  Delete this member? (y/N): "
 
@@ -121,12 +122,21 @@ def prompt_delete_member() -> str:
     return input(PROMPT_DELETE_MEMBER)
 
 
+def prompt_apply_fix_with_delete(num_suggestions: int) -> str:
+    """
+    Prompts user to apply a fix from a list of suggestions, with delete option.
+    Supports: 1-n (apply fix), N (skip), d (delete).
+    Returns the user's input.
+    """
+    return input(PROMPT_APPLY_FIX_WITH_DELETE.format(max_suggestions=num_suggestions))
+
+
 @contextmanager
 def websocket_context():
     """
     Context manager for WebSocket connections.
     Ensures proper connection cleanup even if errors occur.
-    
+
     Usage:
         with websocket_context() as ws:
             # use ws
