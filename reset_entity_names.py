@@ -111,7 +111,7 @@ def process_entities(ws, entities, dry_run=False, recreate_ids=True, verbose=Fal
 
     # Apply automatic entity ID updates (First Pass)
     if recreate_ids and updates:
-        if fix:
+        if not dry_run:
             msg_id = apply_automatic_updates(ws, updates, msg_id)
             update_local_entity_ids(entities, updates)
 
@@ -331,4 +331,6 @@ if __name__ == "__main__":
     with common.websocket_context() as ws:
         if ws:
             entities = list_entities(ws, args.search_regex)
-            process_entities(ws, entities, args.dry_run, args.recreate_ids, args.verbose)
+            process_entities(
+                ws, entities, args.dry_run, args.recreate_ids, args.verbose
+            )
