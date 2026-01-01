@@ -14,28 +14,17 @@ tabulate.PRESERVE_WHITESPACE = True
 def list_entities(ws, search_regex=None):
     msg_id = 1
     ws.send(json.dumps({"id": msg_id, "type": "config/entity_registry/list"}))
-    result = ws.recv()
-    result = json.loads(result)
+    raw = ws.recv()
+    result = json.loads(raw)
 
-    if not result["success"]:
-        print("Failed to list entities.")
-        return []
-
-    entities = result["result"]
-
-    # Filter out entities that don't belong to a device (e.g. helper groups)
-    entities = [e for e in entities if e.get("device_id")]
-
-    if search_regex:
-        entities = [e for e in entities if re.search(search_regex, e["entity_id"])]
-
-    if not entities:
-        print(
-            "No entities found"
-            + (f" matching '{search_regex}'" if search_regex else "")
-            + "."
-        )
-        return []
+    entities = []
+    if result.get("success"):
+        for entry in result.get("result", []):
+            if search_regex and not re.search(search_regex, entry.get("entity_id", "")):
+                continue
+            entities.append(entry)
+    else:
+        print("Failed to list entities from registry.")
 
     return entities
 
