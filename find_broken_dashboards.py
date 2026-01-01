@@ -189,7 +189,7 @@ if __name__ == "__main__":
         help="Optional: Specific dashboard URL path or ID to scan (e.g. 'dashboard-christian')",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show detailed progress"
+        "-v", "--verbose", action="store_true", help="Show detailed progress"
     )
     parser.add_argument(
         "--fix",

@@ -33,7 +33,7 @@ def run_check(script_name, description, fix=False, verbose=False):
 def main():
     parser = argparse.ArgumentParser(description="Run all Home Assistant health checks")
     parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show detailed progress"
+        "-v", "--verbose", action="store_true", help="Show detailed progress"
     )
     parser.add_argument(
         "--fix",

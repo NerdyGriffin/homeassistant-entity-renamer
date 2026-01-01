@@ -305,7 +305,7 @@ def update_local_entity_ids(target_entities, updates):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reset Entity Names to Null")
     parser.add_argument(
-        "--dry-run", "-n", action="store_true", help="Preview changes without applying"
+        "-n", "--dry-run", action="store_true", help="Preview changes without applying"
     )
     parser.add_argument(
         "--search",
@@ -319,8 +319,8 @@ if __name__ == "__main__":
         help="Disable automatic entity ID recreation",
     )
     parser.add_argument(
-        "--verbose",
         "-v",
+        "--verbose",
         action="store_true",
         help="Show all entities, including those with empty names",
     )

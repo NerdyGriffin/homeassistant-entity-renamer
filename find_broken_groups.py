@@ -193,7 +193,7 @@ def find_broken_groups(ws, verbose=False, fix=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find Broken Group Members")
     parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Show detailed progress"
+        "-v", "--verbose", action="store_true", help="Show detailed progress"
     )
     parser.add_argument(
         "--fix",
