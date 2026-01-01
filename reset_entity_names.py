@@ -59,9 +59,7 @@ def update_automation_references(ws, updates, msg_id, dry_run=False, verbose=Fal
             if common.replace_references(config_data, old_id, new_id):
                 modified = True
                 if not dry_run:
-                    print(
-                        f"  Updating reference {old_id} -> {new_id} in {auto_entity_id}"
-                    )
+                    print(f"  Updating reference {old_id} -> {new_id} in {auto_entity_id}")
 
         if modified:
             if not dry_run:
@@ -75,9 +73,7 @@ def update_automation_references(ws, updates, msg_id, dry_run=False, verbose=Fal
                     print(f"    - {old_id} -> {new_id}")
         else:
             if verbose:
-                print(
-                    f"  No actual references found in {auto_entity_id} (might be indirect)"
-                )
+                print(f"  No actual references found in {auto_entity_id} (might be indirect)")
 
     return msg_id
 
@@ -94,9 +90,7 @@ def process_entities(ws, entities, dry_run=False, recreate_ids=True, verbose=Fal
     # Check for automatic entity ID updates (First Pass)
     updates = []
     if recreate_ids:
-        updates, msg_id = get_automatic_updates(
-            ws, [e["entity_id"] for e in entities], msg_id
-        )
+        updates, msg_id = get_automatic_updates(ws, [e["entity_id"] for e in entities], msg_id)
 
     # Apply automatic entity ID updates (First Pass)
     if recreate_ids and updates:
@@ -172,9 +166,7 @@ def process_entities(ws, entities, dry_run=False, recreate_ids=True, verbose=Fal
 
     # Check for automatic entity ID updates (Second Pass)
     if recreate_ids:
-        updates, msg_id = get_automatic_updates(
-            ws, [e["entity_id"] for e in entities], msg_id
-        )
+        updates, msg_id = get_automatic_updates(ws, [e["entity_id"] for e in entities], msg_id)
 
         # Apply automatic entity ID updates (Second Pass)
         if updates:
