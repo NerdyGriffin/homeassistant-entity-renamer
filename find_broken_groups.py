@@ -20,6 +20,78 @@ def get_all_states(ws, msg_id):
     return [], msg_id
 
 
+def get_scene_id(ws, entity_id, msg_id):
+    msg_id += 1
+    ws.send(
+        json.dumps(
+            {"id": msg_id, "type": "config/entity_registry/get", "entity_id": entity_id}
+        )
+    )
+    result = ws.recv()
+    result = json.loads(result)
+
+    if result["success"]:
+        return result["result"]["unique_id"], msg_id
+    return None, msg_id
+
+
+def fix_scene(ws, entity_id, members, broken_members, valid_entities, msg_id):
+    config_data, msg_id = common.get_scene_config(ws, entity_id, msg_id)
+    if not config_data:
+        print(f"  Could not fetch config for {entity_id}")
+        return False, msg_id
+
+    if "id" not in config_data:
+        unique_id, msg_id = get_scene_id(ws, entity_id, msg_id)
+        if unique_id:
+            config_data["id"] = unique_id
+        else:
+            print(f"  Could not determine ID for {entity_id}. Skipping save.")
+            return False, msg_id
+
+    scene_entities = config_data.get("entities", {})
+    modified = False
+
+    for broken in broken_members:
+        suggestions = common.suggest_fix(broken, valid_entities)
+        if suggestions:
+            print(f"\nFound potential fix for '{broken}' in '{entity_id}':")
+            for i, suggestion in enumerate(suggestions, 1):
+                print(f"  {i}. {suggestion}")
+
+            answer = common.prompt_apply_fix_with_delete(len(suggestions))
+            if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
+                selected_fix = suggestions[int(answer) - 1]
+                if broken in scene_entities:
+                    scene_entities[selected_fix] = scene_entities.pop(broken)
+                    modified = True
+                    print(f"  Replacing {broken} with {selected_fix}")
+            elif answer.lower() == "d":
+                if broken in scene_entities:
+                    del scene_entities[broken]
+                    modified = True
+                    print(f"  Removing {broken}")
+            else:
+                print("  Skipped.")
+        else:
+            print(f"\nNo suggestions for '{broken}' in '{entity_id}'.")
+            answer = common.prompt_delete_member()
+            if answer.lower() == "y":
+                if broken in scene_entities:
+                    del scene_entities[broken]
+                    modified = True
+                    print(f"  Removing {broken}")
+
+    if modified:
+        config_data["entities"] = scene_entities
+        if common.save_scene_config(config_data):
+            print(f"  Successfully updated {entity_id}")
+        else:
+            print(f"  Failed to save {entity_id}")
+
+    return modified, msg_id
+
+
 def update_group(ws, object_id, members, msg_id):
     # This only works for 'group' domain legacy groups
     msg_id += 1
@@ -102,9 +174,20 @@ def find_broken_groups(ws, verbose=False, fix=False):
                     registry_entry.get("config_entry_id") if registry_entry else None
                 )
 
+                if domain == "scene":
+                    _, msg_id = fix_scene(
+                        ws,
+                        entity_id,
+                        bg["members"],
+                        bg["broken"],
+                        valid_entities,
+                        msg_id,
+                    )
+                    continue
+
                 if not config_entry_id and domain != "group":
                     print(
-                        f"  Skipping {entity_id}: Auto-fix only supported for 'group' domain or Helper entities."
+                        f"  Skipping {entity_id}: Auto-fix only supported for 'group', 'scene' domain or Helper entities."
                     )
                     continue
 
@@ -132,7 +215,6 @@ def find_broken_groups(ws, verbose=False, fix=False):
                         answer = common.prompt_apply_fix_with_delete(len(suggestions))
                         if answer.isdigit() and 1 <= int(answer) <= len(suggestions):
                             selected_fix = suggestions[int(answer) - 1]
-                            # Replace in list
                             current_members = [
                                 selected_fix if m == broken else m
                                 for m in current_members
@@ -159,9 +241,6 @@ def find_broken_groups(ws, verbose=False, fix=False):
 
                 if modified:
                     if config_entry_id:
-                        # Update config entry
-                        # We assume the key is 'entities' for group-like helpers
-                        # Note: This might fail if the integration doesn't support config_entries/update
                         success, msg_id = common.update_config_entry_options(
                             ws, config_entry_id, {"entities": current_members}, msg_id
                         )
@@ -174,7 +253,6 @@ def find_broken_groups(ws, verbose=False, fix=False):
                                 f"  Failed to update config entry for {entity_id}. Please update via UI."
                             )
                     else:
-                        # Legacy group update
                         object_id = entity_id.split(".", 1)[1]
                         success, msg_id = update_group(
                             ws, object_id, current_members, msg_id

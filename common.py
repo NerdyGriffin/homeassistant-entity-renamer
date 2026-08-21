@@ -584,6 +584,55 @@ def update_config_entry_options(
     return result["success"], msg_id
 
 
+def get_scene_config(
+    ws: websocket.WebSocket, scene_entity_id: str, msg_id: int
+) -> Tuple[Optional[Dict[str, Any]], int]:
+    msg_id += 1
+    ws.send(
+        json.dumps(
+            {
+                "id": msg_id,
+                "type": "scene/config",
+                "entity_id": scene_entity_id,
+            }
+        )
+    )
+    result = ws.recv()
+    result = json.loads(result)
+
+    if result["success"]:
+        if "config" in result["result"]:
+            return result["result"]["config"], msg_id
+        return result["result"], msg_id
+    return None, msg_id
+
+
+def save_scene_config(scene_config: Dict[str, Any]) -> bool:
+    scene_id = scene_config.get("id")
+    if not scene_id:
+        print("Error: Scene config missing ID.")
+        return False
+
+    url = f"http{TLS_S}://{config.HOST}/api/config/scene/config/{scene_id}"
+    headers = {
+        "Authorization": f"Bearer {config.ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        response = requests.post(
+            url, headers=headers, json=scene_config, verify=config.SSL_VERIFY
+        )
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"Failed to save scene {scene_id}: {response.text}")
+            return False
+    except Exception as e:
+        print(f"Exception while saving scene {scene_id}: {e}")
+        return False
+
+
 def get_script_config(
     ws: websocket.WebSocket, script_entity_id: str, msg_id: int
 ) -> Tuple[Optional[Dict[str, Any]], int]:
