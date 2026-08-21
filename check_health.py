@@ -13,7 +13,12 @@ def run_check(script_name, description, fix=False, verbose=False):
     print(f"Running: {description}")
     print(f"{'='*60}")
 
-    cmd = ["./" + script_name]
+    # Run the child under THIS interpreter rather than letting its
+    # `#!/usr/bin/env python3` shebang pick one off PATH. When check_health.py
+    # is started from a venv -- which is how Ansible and cron run it -- the
+    # shebang otherwise resolves to the system python, and every child dies on
+    # `ModuleNotFoundError: tabulate` while the parent itself runs fine.
+    cmd = [sys.executable, script_name]
     if fix:
         cmd.append("--fix")
     if verbose:
@@ -48,6 +53,7 @@ def main():
         ("find_broken_scripts.py", "Checking Scripts"),
         ("find_broken_groups.py", "Checking Groups & Helpers"),
         ("find_broken_dashboards.py", "Checking Dashboards"),
+        ("find_orphaned_devices.py", "Checking Devices"),
     ]
 
     results = []
@@ -73,6 +79,13 @@ def main():
         tabulate.tabulate(summary_data, headers=["Check", "Status"], tablefmt="github")
     )
 
+    # Propagate the worst result. Without this the summary can read FAIL while
+    # the process still exits 0, so any caller gating on the return code -- an
+    # Ansible failed_when, a CI step, a cron job -- silently never fires.
+    if any(code != 0 for _, code in results):
+        return 1
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
