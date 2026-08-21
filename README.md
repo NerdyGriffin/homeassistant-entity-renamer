@@ -85,6 +85,49 @@ Entity 'input_text.interesting_testtext_1' renamed to 'input_text.just_another_t
 
 ```
 
+## Home Assistant API notes
+
+Behaviour verified against Home Assistant 2026.8. Recorded here because in each
+case the obvious call is the one that does not work.
+
+**Config entry options are REST-only.** The WebSocket command
+`config_entries/update` rejects an `options` key outright:
+
+```
+invalid_format: extra keys not allowed @ data['options']
+```
+
+Options belong to the integration's own options flow, which has no WebSocket
+equivalent. Start it with `POST /api/config/config_entries/options/flow`
+carrying `{"handler": "<entry_id>"}`, then submit the fields to
+`POST /api/config/config_entries/options/flow/<flow_id>`. `common.py` wraps this
+as `update_config_entry_options()`.
+
+**The options flow replaces the options mapping; it does not patch it.**
+Submitting only the field you care about clears every other one -- a group helper
+sent just `{"entities": [...]}` loses its `hide_members`. Each form field carries
+its current value in `description.suggested_value`, so seed the payload from the
+form and write your changes over the top. `update_config_entry_options()` does
+this, which is why passing a single key to it is safe.
+
+**Reloading a config entry is REST-only too.** `config_entries/reload` over
+WebSocket answers `unknown_command`; only
+`POST /api/config/config_entries/entry/<entry_id>/reload` exists. See
+`common.reload_config_entry()`.
+
+**A helper rename is not real until that reload.** Setting a config entry's
+title leaves the entity registry's `original_name` on the old value, so the
+entity ID Home Assistant would generate does not change. Reload the entry, then
+re-read the registry.
+
+**Entity IDs include the area since 2026.6.** Home Assistant core PR #170560
+made automatically generated entity IDs carry the area prefix, and the roadmap
+(home-assistant/tasks#6) is for device names to stop repeating the area they sit
+in. A device still named for its area therefore produces a doubled ID such as
+`light.porch_porch_fan`. The fix is to remove the area from the *device* name and
+re-run `reset_entity_names.py`; do not filter renames on whether they lengthen an
+ID, because adding a correct area prefix does exactly that.
+
 ## Acknowledgements
 
 This project was developed in cooperation with ChatGPT, a large language model trained by OpenAI, based on the GPT-3.5 architecture.

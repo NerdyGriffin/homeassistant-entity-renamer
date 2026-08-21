@@ -373,6 +373,30 @@ def replace_references(data: Union[Dict, List], old_ref: str, new_ref: str) -> b
     return modified
 
 
+def get_entity_registry(
+    ws: websocket.WebSocket, msg_id: int
+) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Fetches the entity registry as a list of full entries.
+
+    Unlike get_valid_entities, which flattens the registry and the state machine
+    into a set of entity IDs, this keeps every field -- notably device_id, which
+    is what lets a caller join entities onto devices.
+
+    Returns the list of entries and the updated msg_id.
+    """
+    msg_id += 1
+    ws.send(json.dumps({"id": msg_id, "type": "config/entity_registry/list"}))
+    result = ws.recv()
+    result = json.loads(result)
+
+    if result["success"]:
+        return result["result"], msg_id
+
+    print("Failed to list registry entities.")
+    return [], msg_id
+
+
 def get_device_registry(
     ws: websocket.WebSocket, msg_id: int
 ) -> Tuple[Dict[str, Any], int]:
@@ -395,12 +419,19 @@ def get_device_registry(
     return devices, msg_id
 
 
-def find_related_automations(
-    ws: websocket.WebSocket, entity_id: str, msg_id: int
-) -> Tuple[List[str], int]:
+def find_related(
+    ws: websocket.WebSocket, item_type: str, item_id: str, msg_id: int
+) -> Tuple[Dict[str, List[str]], int]:
     """
-    Finds automations related to a given entity ID.
-    Returns a list of automation entity IDs and the updated msg_id.
+    Finds everything Home Assistant considers related to an item.
+
+    item_type is any type the search integration accepts -- "entity", "device",
+    "area", "config_entry", "automation", "script", "scene", ... The result maps
+    a related type to a list of its IDs, e.g.
+    {"automation": ["automation.foo"], "area": ["office"]}. A related type with
+    nothing in it is absent from the mapping rather than present and empty.
+
+    Returns the mapping and the updated msg_id.
     """
     msg_id += 1
     ws.send(
@@ -408,20 +439,28 @@ def find_related_automations(
             {
                 "id": msg_id,
                 "type": "search/related",
-                "item_type": "entity",
-                "item_id": entity_id,
+                "item_type": item_type,
+                "item_id": item_id,
             }
         )
     )
     result = ws.recv()
     result = json.loads(result)
 
-    automations = []
     if result["success"]:
-        if "automation" in result["result"]:
-            automations = result["result"]["automation"]
+        return result["result"], msg_id
+    return {}, msg_id
 
-    return automations, msg_id
+
+def find_related_automations(
+    ws: websocket.WebSocket, entity_id: str, msg_id: int
+) -> Tuple[List[str], int]:
+    """
+    Finds automations related to a given entity ID.
+    Returns a list of automation entity IDs and the updated msg_id.
+    """
+    related, msg_id = find_related(ws, "entity", entity_id, msg_id)
+    return related.get("automation", []), msg_id
 
 
 def get_automation_config(
@@ -557,31 +596,158 @@ def get_registry_entry(
     return None, msg_id
 
 
+def _rest_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {config.ACCESS_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+
+def _abort_options_flow(flow_id: str) -> None:
+    """Abandons an in-progress options flow. Best effort; never raises."""
+    try:
+        requests.delete(
+            f"http{TLS_S}://{config.HOST}/api/config/config_entries/options/flow/{flow_id}",
+            headers=_rest_headers(),
+            verify=config.SSL_VERIFY,
+        )
+    except Exception:
+        pass
+
+
 def update_config_entry_options(
     ws: websocket.WebSocket, entry_id: str, options: Dict[str, Any], msg_id: int
 ) -> Tuple[bool, int]:
     """
-    Updates the options of a config entry.
-    Returns True if successful, and the updated msg_id.
+    Updates the options of a config entry by driving its options flow.
+
+    `ws` and `msg_id` are vestigial -- the implementation is REST, and they are
+    kept only so existing callers need no change. msg_id is returned unmodified.
+
+    Home Assistant does NOT accept an `options` key on the WebSocket
+    `config_entries/update` command; it answers `invalid_format: extra keys not
+    allowed @ data['options']` (verified against 2026.8). Options belong to the
+    integration's own options flow, which is REST-only:
+
+        POST /api/config/config_entries/options/flow  {"handler": <entry_id>}
+        POST /api/config/config_entries/options/flow/<flow_id>  {<field>: <value>}
+
+    The flow REPLACES the options mapping rather than patching it, so `options`
+    here is treated as an OVERLAY: every field the form declares is seeded from
+    its own `description.suggested_value` (which is the entry's current value),
+    then the caller's keys are written over the top. Passing only the one key
+    you care about is therefore safe. Sending it bare is not -- a group helper
+    given just {"entities": [...]} loses its `hide_members` and `name`.
+
+    Returns True if the flow ran to completion, and the unmodified msg_id.
     """
-    msg_id += 1
-    ws.send(
-        json.dumps(
-            {
-                "id": msg_id,
-                "type": "config_entries/update",
-                "entry_id": entry_id,
-                "options": options,
-            }
+    base = f"http{TLS_S}://{config.HOST}/api/config/config_entries/options/flow"
+    headers = _rest_headers()
+
+    try:
+        response = requests.post(
+            base,
+            headers=headers,
+            json={"handler": entry_id},
+            verify=config.SSL_VERIFY,
         )
+        if response.status_code != 200:
+            print(
+                f"Failed to start options flow for {entry_id}: "
+                f"{response.status_code} {response.text}"
+            )
+            return False, msg_id
+        flow = response.json()
+
+        # A form may be followed by another form (multi-step flows). Keep
+        # submitting until the flow stops asking. The bound is a safety net
+        # against an integration that loops on a validation error we cannot see.
+        for _ in range(10):
+            flow_type = flow.get("type")
+
+            if flow_type in ("create_entry", "abort"):
+                if flow_type == "abort":
+                    print(
+                        f"Options flow for {entry_id} aborted: "
+                        f"{flow.get('reason')}"
+                    )
+                    return False, msg_id
+                return True, msg_id
+
+            if flow_type != "form":
+                print(f"Unexpected options flow step for {entry_id}: {flow_type}")
+                _abort_options_flow(flow["flow_id"])
+                return False, msg_id
+
+            payload = {}
+            for field in flow.get("data_schema") or []:
+                name = field.get("name")
+                if not name:
+                    continue
+                description = field.get("description") or {}
+                if "suggested_value" in description:
+                    payload[name] = description["suggested_value"]
+                elif "default" in field:
+                    payload[name] = field["default"]
+            payload.update(options)
+
+            response = requests.post(
+                f"{base}/{flow['flow_id']}",
+                headers=headers,
+                json=payload,
+                verify=config.SSL_VERIFY,
+            )
+            if response.status_code != 200:
+                print(
+                    f"Failed to submit options flow for {entry_id}: "
+                    f"{response.status_code} {response.text}"
+                )
+                _abort_options_flow(flow["flow_id"])
+                return False, msg_id
+            flow = response.json()
+
+            if flow.get("errors"):
+                print(f"Options flow for {entry_id} rejected: {flow['errors']}")
+                _abort_options_flow(flow["flow_id"])
+                return False, msg_id
+
+        print(f"Options flow for {entry_id} did not finish; giving up.")
+        _abort_options_flow(flow["flow_id"])
+        return False, msg_id
+    except Exception as e:
+        print(f"Exception while updating options for {entry_id}: {e}")
+        return False, msg_id
+
+
+def reload_config_entry(entry_id: str) -> bool:
+    """
+    Reloads a config entry so its entities pick up a changed title or options.
+
+    There is no WebSocket command for this -- `config_entries/reload` answers
+    `unknown_command` (verified against 2026.8). Only the REST endpoint exists.
+
+    This matters after a rename: setting a config entry's title alone leaves the
+    entity registry's `original_name` on the old value, so the entity ID that
+    Home Assistant would generate does not change until the entry is reloaded.
+    """
+    url = (
+        f"http{TLS_S}://{config.HOST}"
+        f"/api/config/config_entries/entry/{entry_id}/reload"
     )
-    result = ws.recv()
-    result = json.loads(result)
-
-    if not result["success"]:
-        print(f"Failed to update config entry {entry_id}: {result.get('error')}")
-
-    return result["success"], msg_id
+    try:
+        response = requests.post(
+            url, headers=_rest_headers(), verify=config.SSL_VERIFY
+        )
+        if response.status_code == 200:
+            return True
+        print(
+            f"Failed to reload config entry {entry_id}: "
+            f"{response.status_code} {response.text}"
+        )
+        return False
+    except Exception as e:
+        print(f"Exception while reloading config entry {entry_id}: {e}")
+        return False
 
 
 def get_scene_config(
