@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import re
 import tabulate
 import common
 import argcomplete
@@ -85,20 +84,13 @@ def find_broken_references(ws, verbose=False, fix=False):
                 print(f"Skipping {auto_id}: Could not fetch config.")
             continue
 
-        config_str = json.dumps(config_data)
+        # Walk the config structurally rather than regexing its JSON dump, so
+        # every value is judged by the key it sits under. A trigger type is
+        # spelled exactly like an entity ID; only the key tells them apart.
+        for match, kind in common.iter_config_references(config_data):
+            if kind == "type":
+                continue  # a trigger type, e.g. `trigger: motion.detected`
 
-        # Regex to find potential entity_ids or service calls
-        # Pattern: word.word (where word is alphanumeric + underscore)
-        # We exclude keys in JSON by ensuring it's not followed by ":" (roughly)
-        # But JSON keys are quoted. "key": "value".
-        # We want to find "value" that looks like "domain.name".
-
-        # Simple regex: matches "domain.name" inside quotes
-        matches = re.findall(
-            common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE
-        )
-
-        for match in matches:
             # Filter out common false positives
             if match == auto_id:
                 continue  # Self reference (id field)
@@ -110,17 +102,24 @@ def find_broken_references(ws, verbose=False, fix=False):
             if common.is_ignored(match):
                 continue
 
-            if match not in valid_set:
-                broken_refs.append((auto_id, match))
+            # A value under `action:`/`service:` is a service call by
+            # definition, so check it against the services alone rather than
+            # against everything.
+            expected = valid_services if kind == "service" else valid_set
+            if match not in expected:
+                broken_refs.append((auto_id, match, kind))
                 if verbose:
-                    print(f"  {auto_id}: Potential broken reference '{match}'")
+                    print(f"  {auto_id}: Potential broken {kind} '{match}'")
 
     if broken_refs:
         missing_services = []
         missing_entities = []
 
-        for auto_id, ref in broken_refs:
-            if common.is_likely_service(ref):
+        for auto_id, ref, kind in broken_refs:
+            # The key already said which it is. is_likely_service() only guessed
+            # from the token, and its lists of known domains and verbs went stale
+            # the same way the false-positive allowlist did.
+            if kind == "service":
                 missing_services.append((auto_id, ref))
             else:
                 missing_entities.append((auto_id, ref))

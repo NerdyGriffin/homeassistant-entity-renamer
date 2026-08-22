@@ -5,7 +5,7 @@ import config
 import difflib
 import requests
 import re
-from typing import List, Dict, Set, Tuple, Optional, Any, Union
+from typing import List, Dict, Set, Tuple, Optional, Any, Union, Iterator
 from contextlib import contextmanager
 
 # Determine the protocol based on TLS configuration
@@ -29,6 +29,27 @@ COMMON_FALSE_POSITIVES = {
     "platform.webhook",
     "platform.mqtt",
 }
+
+# Keys whose value is a TYPE, not a reference to anything.
+#
+# `trigger` and `platform` are the new and old spellings of a trigger's type.
+# Since Home Assistant grew entity- and area-targeted triggers, those types are
+# themselves dotted -- motion.detected, occupancy.cleared, door.opened -- so they
+# are spelled exactly like entity IDs and a regex over the flattened config
+# cannot tell one from the other.
+#
+# A trigger's entity always lives under entity_id or target, never here, so
+# skipping this key cannot hide a real broken reference.
+TYPE_KEYS = {"trigger", "platform"}
+
+# Keys whose value is a SERVICE call. `action` is the 2024.10 spelling of
+# `service`.
+#
+# `action` is also the key for an action *sequence*, but that value is a list
+# rather than a string, so only the service-call form ever reaches a leaf. The
+# key means two different things depending on what it holds, and the type is
+# what separates them.
+SERVICE_KEYS = {"action", "service"}
 
 # Known service domains
 KNOWN_SERVICE_DOMAINS = {
@@ -76,6 +97,60 @@ def is_ignored(ref: str) -> bool:
     if ref in IGNORED_REFERENCES:
         return True
     return False
+
+
+def iter_config_references(
+    config: Union[Dict, List, Any], _key: Optional[str] = None
+) -> Iterator[Tuple[str, str]]:
+    """
+    Walks a config and yields (value, kind) for every reference-shaped string.
+
+    kind is "type", "service" or "entity", decided by the KEY the value sits
+    under rather than by guessing from the value itself.
+
+    This exists because the obvious approach does not work. Flattening the
+    config with json.dumps() and regex-matching every quoted `domain.name` token
+    cannot distinguish an entity ID from a trigger type, since Home Assistant
+    spells them identically:
+
+        triggers:
+          - trigger: motion.detected                     # a type
+            target: {entity_id: binary_sensor.hallway}   # an entity
+
+    Both match the same pattern, so the scanners reported every `motion.detected`
+    as a missing entity. The previous guard, COMMON_FALSE_POSITIVES, is an
+    allowlist of the type names that existed when it was written; it covers the
+    old `platform.*` spellings and went stale the moment Home Assistant added
+    entity- and area-targeted triggers. Since that list grows with every release,
+    an allowlist can only ever be behind. Reading the key instead means this
+    class of mistake cannot be made at all, and nothing has to be maintained as
+    new trigger types appear.
+
+    Known limitation: the values yielded are whole strings, so entity IDs
+    embedded in templates are not seen --
+
+        value_template: "{{ states('sensor.foo') }}"
+
+    -- because the reference is inside the template, not the value. The old
+    regex missed these too (it required the token to be delimited by double
+    quotes, and here it is single-quoted), so this is not a regression. Closing
+    it is a separate change: it turns up new findings rather than removing wrong
+    ones, and needs its own review.
+    """
+    if isinstance(config, dict):
+        for key, value in config.items():
+            yield from iter_config_references(value, key)
+    elif isinstance(config, list):
+        for item in config:
+            yield from iter_config_references(item, _key)
+    elif isinstance(config, str):
+        if re.match(ENTITY_ID_PATTERN, config, re.IGNORECASE):
+            if _key in TYPE_KEYS:
+                yield config, "type"
+            elif _key in SERVICE_KEYS:
+                yield config, "service"
+            else:
+                yield config, "entity"
 
 
 def is_likely_service(ref: str) -> bool:

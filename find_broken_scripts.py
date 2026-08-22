@@ -3,7 +3,6 @@
 
 import argparse
 import json
-import re
 import tabulate
 import common
 import argcomplete
@@ -79,14 +78,14 @@ def find_broken_references(ws, verbose=False, fix=False):
                 print(f"Skipping {script_id}: Could not fetch config.")
             continue
 
-        config_str = json.dumps(config_data)
+        # Walk the config structurally rather than regexing its JSON dump, so
+        # every value is judged by the key it sits under. A script has no
+        # triggers of its own, but wait_for_trigger carries the same trigger
+        # types, which are spelled exactly like entity IDs.
+        for match, kind in common.iter_config_references(config_data):
+            if kind == "type":
+                continue  # a trigger type, e.g. `trigger: motion.cleared`
 
-        # Regex to find potential entity_ids or service calls
-        matches = re.findall(
-            common.ENTITY_ID_IN_QUOTES_PATTERN, config_str, re.IGNORECASE
-        )
-
-        for match in matches:
             # Filter out common false positives
             if match == script_id:
                 continue
@@ -98,17 +97,19 @@ def find_broken_references(ws, verbose=False, fix=False):
             if common.is_ignored(match):
                 continue
 
-            if match not in valid_set:
-                broken_refs.append((script_id, match))
+            expected = valid_services if kind == "service" else valid_set
+            if match not in expected:
+                broken_refs.append((script_id, match, kind))
                 if verbose:
-                    print(f"  {script_id}: Potential broken reference '{match}'")
+                    print(f"  {script_id}: Potential broken {kind} '{match}'")
 
     if broken_refs:
         missing_services = []
         missing_entities = []
 
-        for script_id, ref in broken_refs:
-            if common.is_likely_service(ref):
+        for script_id, ref, kind in broken_refs:
+            # The key already said which it is; is_likely_service() only guessed.
+            if kind == "service":
                 missing_services.append((script_id, ref))
             else:
                 missing_entities.append((script_id, ref))

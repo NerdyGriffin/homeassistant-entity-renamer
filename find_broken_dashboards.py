@@ -2,8 +2,6 @@
 # PYTHON_ARGCOMPLETE_OK
 
 import argparse
-import json
-import re
 import tabulate
 import common
 import argcomplete
@@ -12,27 +10,27 @@ tabulate.PRESERVE_WHITESPACE = True
 
 
 def find_entity_references(data, valid_entities):
-    """Recursively find all strings that look like entity IDs."""
-    refs = []
+    """Recursively find all strings that look like entity IDs.
 
-    if isinstance(data, dict):
-        for key, value in data.items():
-            # Check if the value itself is a string that looks like an entity ID
-            if isinstance(value, str):
-                # Heuristic: domain.name, no spaces, lowercase
-                if re.match(common.ENTITY_ID_PATTERN, value):
-                    # Exclude known non-entities
-                    if value not in ["type", "icon", "name", "theme", "url_path"]:
-                        refs.append(value)
+    Delegates the walk to common.iter_config_references so every scanner
+    classifies references the same way, then keeps only what the key says is an
+    entity. That drops two kinds of noise this function used to produce:
 
-            # Recurse
-            refs.extend(find_entity_references(value, valid_entities))
+      * A service call -- `service: light.turn_on` on a button card -- came back
+        as an entity reference and was then checked against the entity list,
+        where it could never be found. Any dashboard calling a service reported
+        a permanent false positive.
+      * A trigger type, for the same reason as everywhere else.
 
-    elif isinstance(data, list):
-        for item in data:
-            refs.extend(find_entity_references(item, valid_entities))
-
-    return refs
+    The old exclusion list compared each *value* against ["type", "icon", ...],
+    which are key names rather than values, so it never excluded anything.
+    Values like "type" are not dotted and fail the pattern regardless.
+    """
+    return [
+        value
+        for value, kind in common.iter_config_references(data)
+        if kind == "entity"
+    ]
 
 
 def find_broken_dashboards(ws, verbose=False, fix=False, target_dashboard=None):

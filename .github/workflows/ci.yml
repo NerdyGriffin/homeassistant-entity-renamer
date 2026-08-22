@@ -1,0 +1,37 @@
+---
+name: CI
+'on':
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  unit:
+    name: Unit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the codebase.
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies.
+        run: pip3 install pytest -r requirements.txt
+
+      # Every module does `import config` at import time, and common.py reads
+      # config.TLS while being imported. config.py is gitignored, so a bare
+      # checkout cannot import common at all and pytest dies during collection.
+      # The example file carries placeholder values, which is all the offline
+      # tests need -- they never open a connection.
+      - name: Provide a placeholder config.
+        run: cp config.py.example config.py
+
+      # tests/ is offline only. The scanners themselves need a live Home
+      # Assistant and a token, so they are run by hand.
+      - name: Run unit tests.
+        run: pytest tests -q
